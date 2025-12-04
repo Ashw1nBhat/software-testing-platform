@@ -16,6 +16,10 @@ import { Link, useNavigate } from 'react-router-dom'
 type Status = 'idle' | 'loading' | 'error'
 
 function CreateUserPage() {
+  const maxUsername = 150
+  const maxEmployeeCode = 50
+  const maxDesignation = 100
+  const maxPassword = 255
   const [username, setUsername] = useState('')
   const [employeeCode, setEmployeeCode] = useState('')
   const [designation, setDesignation] = useState('')
@@ -100,7 +104,14 @@ function CreateUserPage() {
     }
   }
 
-  const disabled = status === 'loading' || !username || !employeeCode || !role || !password
+  const overLimit =
+    username.length > maxUsername ||
+    employeeCode.length > maxEmployeeCode ||
+    designation.length > maxDesignation ||
+    password.length > maxPassword
+
+  const disabled =
+    status === 'loading' || !username || !employeeCode || !role || !password || overLimit
 
   return (
     <>
@@ -124,6 +135,9 @@ function CreateUserPage() {
                           onChange={(e) => setUsername(e.target.value)}
                           disabled={status === 'loading'}
                         />
+                        <div className="text-muted small mt-1">
+                          {username.length}/{maxUsername}
+                        </div>
                       </Form.Group>
                     </Col>
                     <Col md={6}>
@@ -135,6 +149,9 @@ function CreateUserPage() {
                           onChange={(e) => setEmployeeCode(e.target.value)}
                           disabled={status === 'loading'}
                         />
+                        <div className="text-muted small mt-1">
+                          {employeeCode.length}/{maxEmployeeCode}
+                        </div>
                       </Form.Group>
                     </Col>
                   </Row>
@@ -148,6 +165,9 @@ function CreateUserPage() {
                           onChange={(e) => setDesignation(e.target.value)}
                           disabled={status === 'loading'}
                         />
+                        <div className="text-muted small mt-1">
+                          {designation.length}/{maxDesignation}
+                        </div>
                       </Form.Group>
                     </Col>
                     <Col md={6}>
@@ -178,6 +198,9 @@ function CreateUserPage() {
                           onChange={(e) => setPassword(e.target.value)}
                           disabled={status === 'loading'}
                         />
+                        <div className="text-muted small mt-1">
+                          {password.length}/{maxPassword}
+                        </div>
                       </Form.Group>
                     </Col>
                   </Row>

@@ -1,73 +1,50 @@
-# React + TypeScript + Vite
+# Testing Suite – Setup Guide
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This project is a React + Vite frontend with an Express API server that talks directly to MySQL using stored procedures defined in `db/schema.sql`. Follow these steps on a fresh machine.
 
-Currently, two official plugins are available:
+## Prerequisites
+- Node.js 18+ and npm
+- MySQL 8.x server with a user that can create databases and run DDL
+- Ports: 4000 (API) and 5173 (Vite) available, or override via env
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Install dependencies
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Database setup
+1) Ensure MySQL is running and you know a user/password with create privileges.
+2) Apply the schema (creates `testing_platform`, tables, sample data, procedures):
+```bash
+mysql -u <user> -p < db/schema.sql
 ```
+
+## Environment variables
+Create `.env.local` in the project root:
+```
+VITE_DB_HOST=127.0.0.1
+VITE_DB_PORT=3306
+VITE_DB_USER=<mysql user>
+VITE_DB_PASSWORD=<mysql password>
+VITE_DB_NAME=testing_platform
+```
+
+## Start servers
+In one terminal (API):
+```bash
+npm run server
+```
+In another (frontend):
+```bash
+npm run dev
+```
+Open `http://localhost:5173`.
+
+## Sample credentials (seeded)
+- Tester: user_name `Tara Tester`, password `testerpass`
+- Writer: user_name `Walt Writer`, password `writerpass`
+
+## App flow
+- Login or create a user.
+- Projects page: manage projects and statuses.
+- Project details: manage test cases and runs.
