@@ -1,0 +1,1 @@
+1. Download and install node and npm: https://nodejs.org/en/download
