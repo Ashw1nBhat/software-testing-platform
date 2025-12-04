@@ -128,6 +128,7 @@ VALUES
 
 DROP PROCEDURE IF EXISTS create_user;
 DROP PROCEDURE IF EXISTS login_user;
+DROP PROCEDURE IF EXISTS get_roles;
 
 DELIMITER //
 
@@ -171,6 +172,12 @@ BEGIN
         WHERE user_name = p_user_name
           AND password_md5 = MD5(p_password);
     END IF;
+END//
+
+CREATE PROCEDURE get_roles()
+BEGIN
+    SELECT 'TEST_WRITER' AS role
+    UNION SELECT 'TESTER';
 END//
 
 DELIMITER ;

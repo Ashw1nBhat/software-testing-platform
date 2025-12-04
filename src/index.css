@@ -4,8 +4,8 @@
   font-family: 'Space Grotesk', 'Segoe UI', system-ui, -apple-system, sans-serif;
   line-height: 1.6;
   font-weight: 400;
-  color: #e2e8f0;
-  background-color: #0f172a;
+  color: #e7ecf3;
+  background-color: #0b1224;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -24,10 +24,10 @@ body {
 }
 
 a {
-  color: #7dd3fc;
+  color: #93c5fd;
   text-decoration: none;
 }
 
 a:hover {
-  color: #bae6fd;
+  color: #bfdbfe;
 }
