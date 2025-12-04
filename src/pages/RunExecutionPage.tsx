@@ -14,6 +14,21 @@ type TestStep = { test_step_id: number; description: string; required_data: stri
 
 type Status = 'idle' | 'loading' | 'error' | 'saving'
 
+const friendlyError = (error: unknown) => {
+  const msg = axios.isAxiosError(error)
+    ? error.response?.data?.error || error.message
+    : error instanceof Error
+    ? error.message
+    : ''
+  if (msg) {
+    const lower = msg.toLowerCase()
+    if (lower.includes('user not found')) return 'User does not exist'
+    if (lower.includes('duplicate') || lower.includes('already exists')) return 'Already exists'
+    if (lower.includes('invalid credentials')) return 'Invalid credentials'
+  }
+  return 'Unexpected error occurred'
+}
+
 function RunExecutionPage() {
   const { runId } = useParams<{ runId: string }>()
   const location = useLocation()
@@ -51,19 +66,13 @@ function RunExecutionPage() {
       setCases(rows)
       setCurrentIndex(0)
       if (rows.length > 0) {
-        setCaseStatus(rows[0].status_name === 'UNSET' ? '' : rows[0].status_name || '')
+        setCaseStatus(rows[0].status_name === 'UNTESTED' ? '' : rows[0].status_name || '')
         setCaseNotes(rows[0].notes || '')
         loadStepsForCase(rows[0].test_case_id)
       }
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to load test run cases'
       setStatus('error')
-      setMessage(reason)
+      setMessage(friendlyError(error))
     } finally {
       setStatus('idle')
     }
@@ -90,7 +99,9 @@ function RunExecutionPage() {
       if (!user) return
       try {
         const response = await axios.get(`${apiBase}/api/statuses`, { params: { userId: user.user_id } })
-        const names = (response.data?.statuses || []).map((s: any) => s.status_name)
+        const names = (response.data?.statuses || [])
+          .map((s: any) => s.status_name)
+          .filter((name: string) => name !== 'UNTESTED')
         setAvailableStatuses(names.length ? names : ['PASS', 'FAIL'])
       } catch (error) {
         console.error('Failed to load statuses', error)
@@ -104,7 +115,7 @@ function RunExecutionPage() {
   const handleSelectCase = (index: number) => {
     setCurrentIndex(index)
     const target = cases[index]
-    setCaseStatus(target?.status_name === 'UNSET' ? '' : target?.status_name || '')
+    setCaseStatus(target?.status_name === 'UNTESTED' ? '' : target?.status_name || '')
     setCaseNotes(target?.notes || '')
     setSaveTick(false)
     if (target) {
@@ -130,14 +141,8 @@ function RunExecutionPage() {
       setSaveTick(true)
       setTimeout(() => setSaveTick(false), 2000)
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to update test case'
       setStatus('error')
-      setMessage(reason)
+      setMessage(friendlyError(error))
     } finally {
       setStatus('idle')
     }

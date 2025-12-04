@@ -307,3 +307,33 @@ h6,
   border-color: #f8fbff;
   box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.35);
 }
+
+.stat-card {
+  color: #e7ecf3;
+}
+
+.stat-card .text-muted {
+  color: rgba(231, 236, 243, 0.9) !important;
+}
+
+.stat-card .display-6 {
+  color: #f8fbff;
+}
+
+.analytics-header,
+.analytics-header .text-muted {
+  color: #e7ecf3 !important;
+}
+
+.analytics-bar-label {
+  color: #e7ecf3;
+  font-weight: 600;
+}
+
+.analytics-badge {
+  color: #0b1224;
+}
+
+.analytics-progress {
+  background: rgba(255, 255, 255, 0.1);
+}

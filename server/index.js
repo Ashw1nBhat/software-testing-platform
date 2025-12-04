@@ -390,7 +390,7 @@ app.get('/api/test-runs/:id/summary', async (req, res) => {
     const total = rows.length
     const byStatusMap = new Map()
     rows.forEach((r) => {
-      const name = r.status_name || 'UNSET'
+      const name = r.status_name || 'UNTESTED'
       const color = r.color_hex || null
       const entry = byStatusMap.get(name)
       if (entry) {
@@ -500,26 +500,30 @@ app.put('/api/test-runs/:id/cases/:caseId', async (req, res) => {
 })
 
 app.post('/api/projects/:projectId/test-runs', async (req, res) => {
-  const { userId, testerId, name, description = '', testCaseIds = [] } = req.body ?? {}
+  const { userId, testerName, name, description = '', testCaseIds = [] } = req.body ?? {}
   const projectId = req.params.projectId
-  if (!userId || !projectId || !testerId || !name) {
+  if (!userId || !projectId || !testerName || !name) {
     res
       .status(400)
-      .json({ ok: false, error: 'userId, projectId, testerId, and name are required' })
+      .json({ ok: false, error: 'userId, projectId, testerName, and name are required' })
+    return
+  }
+  if (!Array.isArray(testCaseIds) || testCaseIds.length === 0) {
+    res.status(400).json({ ok: false, error: 'At least one test case is required' })
     return
   }
   try {
     const result = await callProcedure('create_test_run_for_org', [
       userId,
       projectId,
-      testerId,
+      testerName,
       name,
       description,
     ])
     const payload = Array.isArray(result) && Array.isArray(result[0]) ? result[0][0] : null
     const testRunId = payload?.test_run_id
     for (const tcId of testCaseIds) {
-      await callProcedure('add_test_run_case_for_org', [userId, testRunId, tcId, 'UNSET'])
+      await callProcedure('add_test_run_case_for_org', [userId, testRunId, tcId, 'UNTESTED'])
     }
     res.json({ ok: true, testRunId })
   } catch (error) {
@@ -531,19 +535,23 @@ app.post('/api/projects/:projectId/test-runs', async (req, res) => {
 })
 
 app.put('/api/test-runs/:id', async (req, res) => {
-  const { userId, testerId, name, description = '', testCaseIds = [] } = req.body ?? {}
+  const { userId, testerName, name, description = '', testCaseIds = [] } = req.body ?? {}
   const testRunId = req.params.id
-  if (!userId || !testRunId || !testerId || !name) {
+  if (!userId || !testRunId || !testerName || !name) {
     res
       .status(400)
-      .json({ ok: false, error: 'userId, testRunId, testerId, and name are required' })
+      .json({ ok: false, error: 'userId, testRunId, testerName, and name are required' })
+    return
+  }
+  if (!Array.isArray(testCaseIds) || testCaseIds.length === 0) {
+    res.status(400).json({ ok: false, error: 'At least one test case is required' })
     return
   }
   try {
-    await callProcedure('update_test_run_for_org', [userId, testRunId, testerId, name, description])
+    await callProcedure('update_test_run_for_org', [userId, testRunId, testerName, name, description])
     await callProcedure('delete_test_run_cases_for_run', [userId, testRunId])
     for (const tcId of testCaseIds) {
-      await callProcedure('add_test_run_case_for_org', [userId, testRunId, tcId, 'UNSET'])
+      await callProcedure('add_test_run_case_for_org', [userId, testRunId, tcId, 'UNTESTED'])
     }
     res.json({ ok: true })
   } catch (error) {
@@ -568,6 +576,63 @@ app.delete('/api/test-runs/:id', async (req, res) => {
     res.status(500).json({
       ok: false,
       error: error instanceof Error ? error.message : 'Unable to delete test run',
+    })
+  }
+})
+
+app.get('/api/analytics/org', async (req, res) => {
+  const { userId } = req.query
+  if (!userId) {
+    res.status(400).json({ ok: false, error: 'userId is required' })
+    return
+  }
+  try {
+    const result = await callProcedure('list_org_stats', [userId])
+    const totals = Array.isArray(result) && Array.isArray(result[0]) ? result[0][0] : null
+    const statuses = Array.isArray(result) && Array.isArray(result[1]) ? result[1] : []
+    res.json({ ok: true, totals, statuses })
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unable to load analytics',
+    })
+  }
+})
+
+app.get('/api/analytics/project', async (req, res) => {
+  const { userId, projectId } = req.query
+  if (!userId || !projectId) {
+    res.status(400).json({ ok: false, error: 'userId and projectId are required' })
+    return
+  }
+  try {
+    const result = await callProcedure('list_project_stats', [userId, projectId])
+    const totals = Array.isArray(result) && Array.isArray(result[0]) ? result[0][0] : null
+    const statuses = Array.isArray(result) && Array.isArray(result[1]) ? result[1] : []
+    res.json({ ok: true, totals, statuses })
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unable to load project analytics',
+    })
+  }
+})
+
+app.get('/api/analytics/recent', async (req, res) => {
+  const { userId, limit } = req.query
+  const max = Number(limit) || 10
+  if (!userId) {
+    res.status(400).json({ ok: false, error: 'userId is required' })
+    return
+  }
+  try {
+    const result = await callProcedure('list_org_recent_activity', [userId, Math.min(max, 50)])
+    const rows = Array.isArray(result) && Array.isArray(result[0]) ? result[0] : []
+    res.json({ ok: true, activity: rows })
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unable to load recent activity',
     })
   }
 })

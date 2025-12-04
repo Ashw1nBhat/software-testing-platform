@@ -8,7 +8,6 @@ type TestStep = { test_step_id?: number; description: string; required_data: str
 type TestRun = {
   test_run_id: number
   project_id: number
-  tester_id: number
   tester_name: string
   name: string
   description: string | null
@@ -17,11 +16,25 @@ type OrgUser = { user_id: number; user_name: string; role: string; designation: 
 type Status = 'idle' | 'loading' | 'error'
 type RunSummary = { total: number; byStatus: { name: string; color: string | null; count: number }[] }
 
+const friendlyError = (error: unknown) => {
+  const msg = axios.isAxiosError(error)
+    ? error.response?.data?.error || error.message
+    : error instanceof Error
+    ? error.message
+    : ''
+  if (msg) {
+    const lower = msg.toLowerCase()
+    if (lower.includes('user not found')) return 'User does not exist'
+    if (lower.includes('duplicate') || lower.includes('already exists')) return 'Already exists'
+  }
+  return 'Unexpected error occurred'
+}
+
 function ProjectDetailsPage() {
   const { projectId } = useParams<{ projectId: string }>()
   const location = useLocation()
   const navigate = useNavigate()
-  const user = (location.state as { user?: { user_id: number; organization_id: number } } | undefined)
+  const user = (location.state as { user?: { user_id: number; organization_id: number; role?: string } } | undefined)
     ?.user
   const apiBase = useMemo(
     () => import.meta.env.VITE_API_URL || 'http://localhost:4000',
@@ -54,8 +67,9 @@ function ProjectDetailsPage() {
   const [activeRun, setActiveRun] = useState<TestRun | null>(null)
   const [runNameInput, setRunNameInput] = useState('')
   const [runDescInput, setRunDescInput] = useState('')
-  const [runTesterId, setRunTesterId] = useState<number | ''>('')
+  const [runTesterName, setRunTesterName] = useState<string>('')
   const [runCaseIds, setRunCaseIds] = useState<number[]>([])
+  const isTester = user?.role === 'TESTER'
 
   const loadTestCases = async () => {
     if (!user || !projectId) return
@@ -68,14 +82,8 @@ function ProjectDetailsPage() {
       const rows = response.data?.testCases || []
       setTestCases(rows)
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to load test cases'
       setStatus('error')
-      setMessage(reason)
+      setMessage(friendlyError(error))
     } finally {
       setStatus('idle')
     }
@@ -91,13 +99,7 @@ function ProjectDetailsPage() {
       setTestRuns(rows)
       fetchRunSummaries(rows)
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to load test runs'
-      setMessageRuns(reason)
+      setMessageRuns(friendlyError(error))
     }
   }
 
@@ -118,13 +120,7 @@ function ProjectDetailsPage() {
       })
       setRunSummaries(map)
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to load test run summaries'
-      setMessageRuns(reason)
+      setMessageRuns(friendlyError(error))
     }
   }
 
@@ -136,17 +132,11 @@ function ProjectDetailsPage() {
       })
       const rows = response.data?.users || []
       setOrgUsers(rows)
-      if (!runTesterId && rows.length > 0) {
-        setRunTesterId(rows[0].user_id)
+      if (!runTesterName && rows.length > 0) {
+        setRunTesterName(rows[0].user_name)
       }
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to load users'
-      setMessageRuns(reason)
+      setMessageRuns(friendlyError(error))
     }
   }
 
@@ -163,11 +153,13 @@ function ProjectDetailsPage() {
   }
 
   const openCreate = () => {
+    if (isTester) return
     resetForm()
     setShowCreate(true)
   }
 
   const openEdit = async (testCase: TestCase) => {
+    if (isTester) return
     setActiveCase(testCase)
     setTitleInput(testCase.title)
     setDescInput(testCase.description || '')
@@ -189,39 +181,36 @@ function ProjectDetailsPage() {
       )
       setShowEdit(true)
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to load test steps'
       setStatus('error')
-      setMessage(reason)
+      setMessage(friendlyError(error))
     } finally {
       setStatus('idle')
     }
   }
 
   const openDelete = (testCase: TestCase) => {
+    if (isTester) return
     setActiveCase(testCase)
     setShowDelete(true)
   }
 
   const openCreateRun = () => {
+    if (isTester) return
     setRunNameInput('')
     setRunDescInput('')
     setRunCaseIds([])
     if (orgUsers.length > 0) {
-      setRunTesterId(orgUsers[0].user_id)
+      setRunTesterName(orgUsers[0].user_name)
     }
     setShowCreateRun(true)
   }
 
   const openEditRun = async (testRun: TestRun) => {
+    if (isTester) return
     setActiveRun(testRun)
     setRunNameInput(testRun.name)
     setRunDescInput(testRun.description || '')
-    setRunTesterId(testRun.tester_id)
+    setRunTesterName(testRun.tester_name)
     setStatus('loading')
     setMessageRuns('')
     try {
@@ -232,25 +221,20 @@ function ProjectDetailsPage() {
       setRunCaseIds(rows.map((rc: any) => rc.test_case_id))
       setShowEditRun(true)
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to load test run cases'
-      setMessageRuns(reason)
+      setMessageRuns('Unexpected error occurred')
     } finally {
       setStatus('idle')
     }
   }
 
   const openDeleteRun = (testRun: TestRun) => {
+    if (isTester) return
     setActiveRun(testRun)
     setShowDeleteRun(true)
   }
 
   const handleCreate = async () => {
-    if (!user || !projectId || !titleInput) return
+    if (!user || !projectId || !titleInput || isTester) return
     const overLimit =
       titleInput.length > maxTitle ||
       descInput.length > maxDescription ||
@@ -271,21 +255,15 @@ function ProjectDetailsPage() {
       resetForm()
       await loadTestCases()
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to create test case'
       setStatus('error')
-      setMessage(reason)
+      setMessage(friendlyError(error))
     } finally {
       setStatus('idle')
     }
   }
 
   const handleEdit = async () => {
-    if (!user || !activeCase || !titleInput) return
+    if (!user || !activeCase || !titleInput || isTester) return
     const overLimit =
       titleInput.length > maxTitle ||
       descInput.length > maxDescription ||
@@ -307,21 +285,15 @@ function ProjectDetailsPage() {
       resetForm()
       await loadTestCases()
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to update test case'
       setStatus('error')
-      setMessage(reason)
+      setMessage(friendlyError(error))
     } finally {
       setStatus('idle')
     }
   }
 
   const handleDelete = async () => {
-    if (!user || !activeCase) return
+    if (!user || !activeCase || isTester) return
     setStatus('loading')
     setMessage('')
     try {
@@ -332,21 +304,15 @@ function ProjectDetailsPage() {
       setActiveCase(null)
       await loadTestCases()
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to delete test case'
       setStatus('error')
-      setMessage(reason)
+      setMessage('Unexpected error occurred')
     } finally {
       setStatus('idle')
     }
   }
 
   const handleCreateRun = async () => {
-    if (!user || !projectId || !runNameInput || !runTesterId) return
+    if (!user || !projectId || !runNameInput || !runTesterName || isTester) return
     const overLimit =
       runNameInput.length > 150 ||
       runDescInput.length > 1000 ||
@@ -357,7 +323,7 @@ function ProjectDetailsPage() {
     try {
       await axios.post(`${apiBase}/api/projects/${projectId}/test-runs`, {
         userId: user.user_id,
-        testerId: runTesterId,
+        testerName: runTesterName,
         name: runNameInput,
         description: runDescInput,
         testCaseIds: runCaseIds,
@@ -366,20 +332,14 @@ function ProjectDetailsPage() {
       setRunCaseIds([])
       await loadTestRuns()
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to create test run'
-      setMessageRuns(reason)
+      setMessageRuns(friendlyError(error))
     } finally {
       setStatus('idle')
     }
   }
 
   const handleEditRun = async () => {
-    if (!user || !activeRun || !runNameInput || !runTesterId) return
+    if (!user || !activeRun || !runNameInput || !runTesterName || isTester) return
     const overLimit =
       runNameInput.length > 150 ||
       runDescInput.length > 1000 ||
@@ -390,7 +350,7 @@ function ProjectDetailsPage() {
     try {
       await axios.put(`${apiBase}/api/test-runs/${activeRun.test_run_id}`, {
         userId: user.user_id,
-        testerId: runTesterId,
+        testerName: runTesterName,
         name: runNameInput,
         description: runDescInput,
         testCaseIds: runCaseIds,
@@ -400,20 +360,14 @@ function ProjectDetailsPage() {
       setRunCaseIds([])
       await loadTestRuns()
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to update test run'
-      setMessageRuns(reason)
+      setMessageRuns(friendlyError(error))
     } finally {
       setStatus('idle')
     }
   }
 
   const handleDeleteRun = async () => {
-    if (!user || !activeRun) return
+    if (!user || !activeRun || isTester) return
     setStatus('loading')
     setMessageRuns('')
     try {
@@ -424,13 +378,7 @@ function ProjectDetailsPage() {
       setActiveRun(null)
       await loadTestRuns()
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Unable to delete test run'
-      setMessageRuns(reason)
+      setMessageRuns(friendlyError(error))
     } finally {
       setStatus('idle')
     }
@@ -513,7 +461,7 @@ function ProjectDetailsPage() {
                 <div className="d-grid gap-3 mt-4">
                   <div className="d-flex justify-content-between align-items-center">
                     <h5 className="mb-0">Test cases</h5>
-                    <Button variant="outline-light" className="soft-button" onClick={openCreate}>
+                    <Button variant="outline-light" className="soft-button" onClick={openCreate} disabled={isTester}>
                       + Create test case
                     </Button>
                   </div>
@@ -556,6 +504,7 @@ function ProjectDetailsPage() {
                               variant="outline-light"
                               className="soft-button"
                               onClick={() => openEdit(tc)}
+                              disabled={isTester}
                             >
                               Edit
                             </Button>
@@ -563,6 +512,7 @@ function ProjectDetailsPage() {
                               size="sm"
                               variant="outline-danger"
                               onClick={() => openDelete(tc)}
+                              disabled={isTester}
                             >
                               Delete
                             </Button>
@@ -578,7 +528,7 @@ function ProjectDetailsPage() {
                 <div className="d-grid gap-3 mt-4">
                   <div className="d-flex justify-content-between align-items-center">
                     <h5 className="mb-0">Test runs</h5>
-                    <Button variant="outline-light" className="soft-button" onClick={openCreateRun}>
+                    <Button variant="outline-light" className="soft-button" onClick={openCreateRun} disabled={isTester}>
                       + Create test run
                     </Button>
                   </div>
@@ -600,7 +550,7 @@ function ProjectDetailsPage() {
                         const summary = runSummaries[tr.test_run_id]
                         const total = summary?.total ?? 0
                         const completed =
-                          summary?.byStatus.reduce((acc, s) => (s.name === 'UNSET' ? acc : acc + s.count), 0) ??
+                          summary?.byStatus.reduce((acc, s) => (s.name === 'UNTESTED' ? acc : acc + s.count), 0) ??
                           0
                         const percent = total > 0 ? Math.round((completed / total) * 100) : 0
                         return (
@@ -611,14 +561,14 @@ function ProjectDetailsPage() {
                           <div>
                             <div className="fw-semibold">{tr.name}</div>
                             <div className="text-muted small mb-0">
-                              {tr.description || 'No description provided'} — Tester: {tr.tester_name} (ID: {tr.tester_id})
+                              {tr.description || 'No description provided'} — Tester: {tr.tester_name}
                             </div>
                             <div className="d-flex align-items-center gap-2 flex-wrap mt-2">
                               <span className="badge bg-secondary">
                                 {completed}/{total || '0'} marked ({percent}%)
                               </span>
                               {summary?.byStatus
-                                .filter((s) => s.name !== 'UNSET')
+                                .filter((s) => s.name !== 'UNTESTED')
                                 .map((s) => (
                                   <span
                                     key={s.name}
@@ -650,6 +600,7 @@ function ProjectDetailsPage() {
                               variant="outline-light"
                               className="soft-button"
                               onClick={() => openEditRun(tr)}
+                              disabled={isTester}
                             >
                               Edit
                             </Button>
@@ -657,6 +608,7 @@ function ProjectDetailsPage() {
                               size="sm"
                               variant="outline-danger"
                               onClick={() => openDeleteRun(tr)}
+                              disabled={isTester}
                             >
                               Delete
                             </Button>
@@ -762,6 +714,7 @@ function ProjectDetailsPage() {
             variant="primary"
             onClick={handleCreate}
             disabled={
+              isTester ||
               !titleInput ||
               status === 'loading' ||
               overLimit ||
@@ -862,6 +815,7 @@ function ProjectDetailsPage() {
             variant="primary"
             onClick={handleEdit}
             disabled={
+              isTester ||
               !titleInput ||
               status === 'loading' ||
               overLimit ||
@@ -885,7 +839,7 @@ function ProjectDetailsPage() {
           <Button variant="secondary" onClick={() => setShowDelete(false)}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={handleDelete} disabled={status === 'loading'}>
+          <Button variant="danger" onClick={handleDelete} disabled={status === 'loading' || isTester}>
             {status === 'loading' && <Spinner animation="border" size="sm" className="me-2" />}
             Delete
           </Button>
@@ -920,11 +874,11 @@ function ProjectDetailsPage() {
             <Form.Group controlId="runTester">
               <Form.Label>Assign tester</Form.Label>
               <Form.Select
-                value={runTesterId}
-                onChange={(e) => setRunTesterId(Number(e.target.value))}
+                value={runTesterName}
+                onChange={(e) => setRunTesterName(e.target.value)}
               >
                 {orgUsers.map((u) => (
-                  <option key={u.user_id} value={u.user_id}>
+                  <option key={u.user_id} value={u.user_name}>
                     {u.user_name} ({u.role})
                   </option>
                 ))}
@@ -977,8 +931,9 @@ function ProjectDetailsPage() {
             variant="primary"
             onClick={handleCreateRun}
             disabled={
+              isTester ||
               !runNameInput ||
-              !runTesterId ||
+              !runTesterName ||
               runCaseIds.length === 0 ||
               status === 'loading' ||
               runNameInput.length > 150 ||
@@ -1019,11 +974,11 @@ function ProjectDetailsPage() {
             <Form.Group controlId="editRunTester">
               <Form.Label>Assign tester</Form.Label>
               <Form.Select
-                value={runTesterId}
-                onChange={(e) => setRunTesterId(Number(e.target.value))}
+                value={runTesterName}
+                onChange={(e) => setRunTesterName(e.target.value)}
               >
                 {orgUsers.map((u) => (
-                  <option key={u.user_id} value={u.user_id}>
+                  <option key={u.user_id} value={u.user_name}>
                     {u.user_name} ({u.role})
                   </option>
                 ))}
@@ -1076,8 +1031,9 @@ function ProjectDetailsPage() {
             variant="primary"
             onClick={handleEditRun}
             disabled={
+              isTester ||
               !runNameInput ||
-              !runTesterId ||
+              !runTesterName ||
               runCaseIds.length === 0 ||
               status === 'loading' ||
               runNameInput.length > 150 ||
@@ -1101,7 +1057,7 @@ function ProjectDetailsPage() {
           <Button variant="secondary" onClick={() => setShowDeleteRun(false)}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={handleDeleteRun} disabled={status === 'loading'}>
+          <Button variant="danger" onClick={handleDeleteRun} disabled={status === 'loading' || isTester}>
             {status === 'loading' && <Spinner animation="border" size="sm" className="me-2" />}
             Delete
           </Button>

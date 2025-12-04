@@ -5,6 +5,21 @@ import { useNavigate } from 'react-router-dom'
 
 type Status = 'idle' | 'loading' | 'error'
 
+const friendlyError = (error: unknown) => {
+  const msg = axios.isAxiosError(error)
+    ? error.response?.data?.error || error.message
+    : error instanceof Error
+    ? error.message
+    : ''
+  if (msg) {
+    const lower = msg.toLowerCase()
+    if (lower.includes('invalid credentials')) return 'Invalid credentials'
+    if (lower.includes('user not found')) return 'User does not exist'
+    if (lower.includes('duplicate') || lower.includes('already exists')) return 'User already exists'
+  }
+  return 'Unexpected error occurred'
+}
+
 function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -30,17 +45,11 @@ function LoginPage() {
         navigate('/projects', { state: { user: response.data.user } })
       } else {
         setStatus('error')
-        setMessage('Login failed')
+        setMessage('Unexpected error occurred')
       }
     } catch (error) {
-      const isAxios = axios.isAxiosError(error)
-      const reason =
-        (isAxios && error.response?.data?.error) ||
-        (isAxios && error.message) ||
-        (error instanceof Error && error.message) ||
-        'Login failed'
       setStatus('error')
-      setMessage(reason)
+      setMessage(friendlyError(error))
     } finally {
       setStatus((prev) => (prev === 'loading' ? 'idle' : prev))
     }

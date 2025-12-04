@@ -21,7 +21,7 @@ CREATE TABLE `Organizations` (
 CREATE TABLE `Users` (
     user_id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     organization_id BIGINT UNSIGNED NOT NULL,
-    user_name       VARCHAR(150) NOT NULL,
+    user_name       VARCHAR(150) NOT NULL UNIQUE,
     employee_code   VARCHAR(50) NOT NULL UNIQUE,
     designation     VARCHAR(100),
     join_date       DATE NOT NULL,
@@ -65,11 +65,11 @@ CREATE TABLE `Statuses` (
 CREATE TABLE `Test_Runs` (
     test_run_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     project_id  BIGINT UNSIGNED NOT NULL,
-    tester_id   BIGINT UNSIGNED NOT NULL,
+    tester_name VARCHAR(150) NOT NULL,
     name        VARCHAR(150) NOT NULL,
     description VARCHAR(1000),
     CONSTRAINT fk_run_project FOREIGN KEY (project_id) REFERENCES `Projects`(project_id) ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT fk_run_tester FOREIGN KEY (tester_id) REFERENCES `Users`(user_id) ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT fk_run_tester FOREIGN KEY (tester_name) REFERENCES `Users`(user_name) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE `Test_Run_Cases` (
@@ -88,7 +88,7 @@ CREATE TABLE `Test_Run_Cases` (
 INSERT INTO `Organizations` (organization_id, name, description, address, pin_code)
 VALUES (1, 'Acme QA Labs', 'Manual testing center of excellence', '123 Quality Ave, Test City', '123456');
 
-INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (1, 'UNSET', '#9ca3af') ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex);
+INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (1, 'UNTESTED', '#9ca3af') ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex);
 INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (1, 'PASS', '#22c55e') ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex);
 INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (1, 'FAIL', '#ef4444') ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex);
 
@@ -125,8 +125,8 @@ VALUES
   (12, 4, 'Enter credit card and place order', 'cc: 4111111111111111 exp 12/28 cvv 123'),
   (13, 4, 'Verify order confirmation page displays', NULL);
 
-INSERT INTO `Test_Runs` (test_run_id, project_id, tester_id, name, description)
-VALUES (1, 1, 1, 'Sprint 12 Regression', 'Core login coverage');
+INSERT INTO `Test_Runs` (test_run_id, project_id, tester_name, name, description)
+VALUES (1, 1, 'Tara Tester', 'Sprint 12 Regression', 'Core login coverage');
 
 INSERT INTO `Test_Run_Cases` (test_run_id, test_case_id, organization_id, status_name, notes)
 VALUES
@@ -161,6 +161,9 @@ DROP PROCEDURE IF EXISTS list_statuses;
 DROP PROCEDURE IF EXISTS create_status;
 DROP PROCEDURE IF EXISTS update_status;
 DROP PROCEDURE IF EXISTS delete_status;
+DROP PROCEDURE IF EXISTS list_org_stats;
+DROP PROCEDURE IF EXISTS list_project_stats;
+DROP PROCEDURE IF EXISTS list_org_recent_activity;
 
 DELIMITER //
 
@@ -532,8 +535,10 @@ CREATE PROCEDURE list_test_runs_by_project(
 )
 BEGIN
     DECLARE v_org_id BIGINT UNSIGNED;
+    DECLARE v_role VARCHAR(50);
     DECLARE v_project_org BIGINT UNSIGNED;
-    SELECT organization_id INTO v_org_id FROM `Users` WHERE user_id = p_user_id;
+    DECLARE v_user_name VARCHAR(150);
+    SELECT organization_id, role, user_name INTO v_org_id, v_role, v_user_name FROM `Users` WHERE user_id = p_user_id;
     SELECT organization_id INTO v_project_org FROM `Projects` WHERE project_id = p_project_id;
 
     IF v_org_id IS NULL THEN
@@ -545,20 +550,19 @@ BEGIN
 
     SELECT tr.test_run_id,
            tr.project_id,
-           tr.tester_id,
+           tr.tester_name,
            tr.name,
-           tr.description,
-           u.user_name AS tester_name
+           tr.description
     FROM `Test_Runs` tr
-    JOIN `Users` u ON tr.tester_id = u.user_id
     WHERE tr.project_id = p_project_id
+      AND (v_role <> 'TESTER' OR tr.tester_name = v_user_name)
     ORDER BY tr.test_run_id DESC;
 END//
 
 CREATE PROCEDURE create_test_run_for_org(
     IN p_user_id BIGINT UNSIGNED,
     IN p_project_id BIGINT UNSIGNED,
-    IN p_tester_id BIGINT UNSIGNED,
+    IN p_tester_name VARCHAR(150),
     IN p_name VARCHAR(150),
     IN p_description VARCHAR(1000)
 )
@@ -568,7 +572,7 @@ BEGIN
     DECLARE v_tester_org BIGINT UNSIGNED;
     SELECT organization_id INTO v_org_id FROM `Users` WHERE user_id = p_user_id;
     SELECT organization_id INTO v_project_org FROM `Projects` WHERE project_id = p_project_id;
-    SELECT organization_id INTO v_tester_org FROM `Users` WHERE user_id = p_tester_id;
+    SELECT organization_id INTO v_tester_org FROM `Users` WHERE user_name = p_tester_name;
 
     IF v_org_id IS NULL THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User not found';
@@ -580,8 +584,8 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Tester not in organization';
     END IF;
 
-    INSERT INTO `Test_Runs` (project_id, tester_id, name, description)
-    VALUES (p_project_id, p_tester_id, p_name, p_description);
+    INSERT INTO `Test_Runs` (project_id, tester_name, name, description)
+    VALUES (p_project_id, p_tester_name, p_name, p_description);
 
     SELECT LAST_INSERT_ID() AS test_run_id;
 END//
@@ -589,7 +593,7 @@ END//
 CREATE PROCEDURE update_test_run_for_org(
     IN p_user_id BIGINT UNSIGNED,
     IN p_test_run_id BIGINT UNSIGNED,
-    IN p_tester_id BIGINT UNSIGNED,
+    IN p_tester_name VARCHAR(150),
     IN p_name VARCHAR(150),
     IN p_description VARCHAR(1000)
 )
@@ -602,7 +606,7 @@ BEGIN
     FROM `Test_Runs` tr
     JOIN `Projects` p ON tr.project_id = p.project_id
     WHERE tr.test_run_id = p_test_run_id;
-    SELECT organization_id INTO v_tester_org FROM `Users` WHERE user_id = p_tester_id;
+    SELECT organization_id INTO v_tester_org FROM `Users` WHERE user_name = p_tester_name;
 
     IF v_org_id IS NULL THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User not found';
@@ -615,7 +619,7 @@ BEGIN
     END IF;
 
     UPDATE `Test_Runs`
-    SET tester_id = p_tester_id,
+    SET tester_name = p_tester_name,
         name = p_name,
         description = p_description
     WHERE test_run_id = p_test_run_id;
@@ -657,9 +661,12 @@ CREATE PROCEDURE list_test_run_cases(
 )
 BEGIN
     DECLARE v_org_id BIGINT UNSIGNED;
+    DECLARE v_role VARCHAR(50);
+    DECLARE v_user_name VARCHAR(150);
     DECLARE v_run_org BIGINT UNSIGNED;
-    SELECT organization_id INTO v_org_id FROM `Users` WHERE user_id = p_user_id;
-    SELECT organization_id INTO v_run_org
+    DECLARE v_tester_name VARCHAR(150);
+    SELECT organization_id, role, user_name INTO v_org_id, v_role, v_user_name FROM `Users` WHERE user_id = p_user_id;
+    SELECT organization_id, tester_name INTO v_run_org, v_tester_name
     FROM `Test_Runs` tr
     JOIN `Projects` p ON tr.project_id = p.project_id
     WHERE tr.test_run_id = p_test_run_id;
@@ -669,6 +676,9 @@ BEGIN
     END IF;
     IF v_run_org IS NULL OR v_run_org <> v_org_id THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Test run not found or not in organization';
+    END IF;
+    IF v_role = 'TESTER' AND (v_tester_name IS NULL OR v_tester_name <> v_user_name) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Not authorized for this test run';
     END IF;
 
     SELECT trc.test_case_id, trc.status_name, trc.notes, tc.title, tc.description, s.color_hex
@@ -745,10 +755,13 @@ CREATE PROCEDURE update_test_run_case_for_org(
 )
 BEGIN
     DECLARE v_org_id BIGINT UNSIGNED;
+    DECLARE v_role VARCHAR(50);
+    DECLARE v_user_name VARCHAR(150);
     DECLARE v_run_org BIGINT UNSIGNED;
     DECLARE v_case_org BIGINT UNSIGNED;
-    SELECT organization_id INTO v_org_id FROM `Users` WHERE user_id = p_user_id;
-    SELECT organization_id INTO v_run_org
+    DECLARE v_tester_name VARCHAR(150);
+    SELECT organization_id, role, user_name INTO v_org_id, v_role, v_user_name FROM `Users` WHERE user_id = p_user_id;
+    SELECT organization_id, tester_name INTO v_run_org, v_tester_name
     FROM `Test_Runs` tr
     JOIN `Projects` p ON tr.project_id = p.project_id
     WHERE tr.test_run_id = p_test_run_id;
@@ -765,6 +778,9 @@ BEGIN
     END IF;
     IF v_case_org IS NULL OR v_case_org <> v_org_id THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Test case not found or not in organization';
+    END IF;
+    IF v_role = 'TESTER' AND (v_tester_name IS NULL OR v_tester_name <> v_user_name) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Not authorized for this test run';
     END IF;
 
     UPDATE `Test_Run_Cases`
@@ -792,6 +808,7 @@ BEGIN
     SELECT status_name, color_hex
     FROM `Statuses`
     WHERE organization_id = v_org_id
+      AND status_name <> 'UNTESTED'
     ORDER BY status_name;
 END//
 
@@ -816,25 +833,42 @@ END//
 CREATE PROCEDURE update_status(
     IN p_user_id BIGINT UNSIGNED,
     IN p_status_name VARCHAR(50),
+    IN p_new_status_name VARCHAR(50),
     IN p_color_hex CHAR(7)
 )
 BEGIN
     DECLARE v_org_id BIGINT UNSIGNED;
+    DECLARE v_exists INT DEFAULT 0;
     SELECT organization_id INTO v_org_id FROM `Users` WHERE user_id = p_user_id;
 
     IF v_org_id IS NULL THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User not found';
     END IF;
 
+    IF p_status_name = 'UNTESTED' AND p_new_status_name <> 'UNTESTED' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot rename default status UNTESTED';
+    END IF;
+
+    SELECT COUNT(*) INTO v_exists
+    FROM `Statuses`
+    WHERE organization_id = v_org_id
+      AND status_name = p_new_status_name
+      AND p_new_status_name <> p_status_name;
+
+    IF v_exists > 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Status already exists';
+    END IF;
+
     UPDATE `Statuses`
-    SET color_hex = p_color_hex
+    SET status_name = p_new_status_name,
+        color_hex = p_color_hex
     WHERE organization_id = v_org_id AND status_name = p_status_name;
 
     IF ROW_COUNT() = 0 THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Status not found';
     END IF;
 
-    SELECT p_status_name AS status_name;
+    SELECT p_new_status_name AS status_name;
 END//
 
 CREATE PROCEDURE delete_status(
@@ -850,17 +884,17 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User not found';
     END IF;
 
-    IF p_status_name = 'UNSET' THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot delete default status UNSET';
+    IF p_status_name = 'UNTESTED' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Cannot delete default status UNTESTED';
     END IF;
 
-    SELECT COUNT(*) INTO v_unset_exists FROM `Statuses` WHERE organization_id = v_org_id AND status_name = 'UNSET';
+    SELECT COUNT(*) INTO v_unset_exists FROM `Statuses` WHERE organization_id = v_org_id AND status_name = 'UNTESTED';
     IF v_unset_exists = 0 THEN
-        INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (v_org_id, 'UNSET', '#9ca3af');
+        INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (v_org_id, 'UNTESTED', '#9ca3af');
     END IF;
 
     UPDATE `Test_Run_Cases`
-    SET status_name = 'UNSET'
+    SET status_name = 'UNTESTED'
     WHERE organization_id = v_org_id AND status_name = p_status_name;
 
     DELETE FROM `Statuses` WHERE organization_id = v_org_id AND status_name = p_status_name;
@@ -868,6 +902,197 @@ BEGIN
     IF ROW_COUNT() = 0 THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Status not found';
     END IF;
+END//
+
+CREATE PROCEDURE list_org_stats(
+    IN p_user_id BIGINT UNSIGNED
+)
+BEGIN
+    DECLARE v_org_id BIGINT UNSIGNED;
+    DECLARE v_total_projects BIGINT DEFAULT 0;
+    DECLARE v_total_cases BIGINT DEFAULT 0;
+    DECLARE v_total_users BIGINT DEFAULT 0;
+    DECLARE v_testers BIGINT DEFAULT 0;
+    DECLARE v_writers BIGINT DEFAULT 0;
+    DECLARE v_total_runs BIGINT DEFAULT 0;
+    DECLARE v_total_run_cases BIGINT DEFAULT 0;
+    DECLARE v_executed BIGINT DEFAULT 0;
+    DECLARE v_untested BIGINT DEFAULT 0;
+    DECLARE v_avg_cases_per_run DECIMAL(10,2) DEFAULT 0;
+    SELECT organization_id INTO v_org_id FROM `Users` WHERE user_id = p_user_id;
+
+    IF v_org_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User not found';
+    END IF;
+
+    SELECT COUNT(*) INTO v_total_projects FROM `Projects` WHERE organization_id = v_org_id;
+    SELECT COUNT(*) INTO v_total_cases
+    FROM `Test_Cases` tc
+    JOIN `Projects` p ON tc.project_id = p.project_id
+    WHERE p.organization_id = v_org_id;
+    SELECT COUNT(*) INTO v_total_users FROM `Users` WHERE organization_id = v_org_id;
+    SELECT COUNT(*) INTO v_testers FROM `Users` WHERE organization_id = v_org_id AND role = 'TESTER';
+    SELECT COUNT(*) INTO v_writers FROM `Users` WHERE organization_id = v_org_id AND role = 'TEST_WRITER';
+    SELECT COUNT(*) INTO v_total_runs
+    FROM `Test_Runs` tr
+    JOIN `Projects` p ON tr.project_id = p.project_id
+    WHERE p.organization_id = v_org_id;
+    SELECT COUNT(*) INTO v_total_run_cases
+    FROM `Test_Run_Cases` trc
+    WHERE trc.organization_id = v_org_id;
+    SELECT COUNT(*) INTO v_executed
+    FROM `Test_Run_Cases` trc
+    WHERE trc.organization_id = v_org_id AND trc.status_name <> 'UNTESTED';
+    SELECT COUNT(*) INTO v_untested
+    FROM `Test_Run_Cases` trc
+    WHERE trc.organization_id = v_org_id AND trc.status_name = 'UNTESTED';
+
+    IF v_total_runs > 0 THEN
+        SET v_avg_cases_per_run = v_total_run_cases / v_total_runs;
+    END IF;
+
+    SELECT
+        v_total_cases AS total_cases,
+        v_total_projects AS total_projects,
+        v_total_users AS total_users,
+        CASE WHEN v_total_users = 0 THEN 0 ELSE ROUND((v_testers / v_total_users) * 100, 2) END AS testers_pct,
+        CASE WHEN v_total_users = 0 THEN 0 ELSE ROUND((v_writers / v_total_users) * 100, 2) END AS writers_pct,
+        v_total_runs AS total_runs,
+        CASE WHEN v_total_run_cases = 0 THEN 0 ELSE ROUND((v_executed / v_total_run_cases) * 100, 2) END AS executed_pct,
+        CASE WHEN v_total_run_cases = 0 THEN 0 ELSE ROUND((v_untested / v_total_run_cases) * 100, 2) END AS untested_pct,
+        v_avg_cases_per_run AS avg_cases_per_run
+    ;
+
+    SELECT
+        s.status_name,
+        s.color_hex,
+        COALESCE(SUM(CASE WHEN trc.status_name = s.status_name THEN 1 ELSE 0 END), 0) AS count,
+        CASE
+            WHEN v_total_run_cases = 0 THEN 0
+            ELSE ROUND(
+                (COALESCE(SUM(CASE WHEN trc.status_name = s.status_name THEN 1 ELSE 0 END), 0) / v_total_run_cases) * 100,
+                2
+            )
+        END AS pct
+    FROM `Statuses` s
+    LEFT JOIN `Test_Run_Cases` trc
+      ON trc.organization_id = v_org_id AND trc.status_name = s.status_name
+    WHERE s.organization_id = v_org_id
+    GROUP BY s.status_name, s.color_hex
+    ORDER BY s.status_name;
+END//
+
+CREATE PROCEDURE list_project_stats(
+    IN p_user_id BIGINT UNSIGNED,
+    IN p_project_id BIGINT UNSIGNED
+)
+BEGIN
+    DECLARE v_org_id BIGINT UNSIGNED;
+    DECLARE v_project_org BIGINT UNSIGNED;
+    DECLARE v_total_projects BIGINT DEFAULT 0;
+    DECLARE v_total_cases BIGINT DEFAULT 0;
+    DECLARE v_total_users BIGINT DEFAULT 0;
+    DECLARE v_testers BIGINT DEFAULT 0;
+    DECLARE v_writers BIGINT DEFAULT 0;
+    DECLARE v_total_runs BIGINT DEFAULT 0;
+    DECLARE v_total_run_cases BIGINT DEFAULT 0;
+    DECLARE v_executed BIGINT DEFAULT 0;
+    DECLARE v_untested BIGINT DEFAULT 0;
+    DECLARE v_avg_cases_per_run DECIMAL(10,2) DEFAULT 0;
+    SELECT organization_id INTO v_org_id FROM `Users` WHERE user_id = p_user_id;
+    SELECT organization_id INTO v_project_org FROM `Projects` WHERE project_id = p_project_id;
+
+    IF v_org_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User not found';
+    END IF;
+    IF v_project_org IS NULL OR v_project_org <> v_org_id THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Project not found or not in organization';
+    END IF;
+
+    SET v_total_projects = 1;
+    SELECT COUNT(*) INTO v_total_cases FROM `Test_Cases` WHERE project_id = p_project_id;
+    SELECT COUNT(*) INTO v_total_users FROM `Users` WHERE organization_id = v_org_id;
+    SELECT COUNT(*) INTO v_testers FROM `Users` WHERE organization_id = v_org_id AND role = 'TESTER';
+    SELECT COUNT(*) INTO v_writers FROM `Users` WHERE organization_id = v_org_id AND role = 'TEST_WRITER';
+    SELECT COUNT(*) INTO v_total_runs FROM `Test_Runs` WHERE project_id = p_project_id;
+    SELECT COUNT(*) INTO v_total_run_cases
+    FROM `Test_Run_Cases` trc
+    JOIN `Test_Runs` tr ON trc.test_run_id = tr.test_run_id
+    WHERE tr.project_id = p_project_id;
+    SELECT COUNT(*) INTO v_executed
+    FROM `Test_Run_Cases` trc
+    JOIN `Test_Runs` tr ON trc.test_run_id = tr.test_run_id
+    WHERE tr.project_id = p_project_id AND trc.status_name <> 'UNTESTED';
+    SELECT COUNT(*) INTO v_untested
+    FROM `Test_Run_Cases` trc
+    JOIN `Test_Runs` tr ON trc.test_run_id = tr.test_run_id
+    WHERE tr.project_id = p_project_id AND trc.status_name = 'UNTESTED';
+
+    IF v_total_runs > 0 THEN
+        SET v_avg_cases_per_run = v_total_run_cases / v_total_runs;
+    END IF;
+
+    SELECT
+        v_total_cases AS total_cases,
+        v_total_projects AS total_projects,
+        v_total_users AS total_users,
+        CASE WHEN v_total_users = 0 THEN 0 ELSE ROUND((v_testers / v_total_users) * 100, 2) END AS testers_pct,
+        CASE WHEN v_total_users = 0 THEN 0 ELSE ROUND((v_writers / v_total_users) * 100, 2) END AS writers_pct,
+        v_total_runs AS total_runs,
+        CASE WHEN v_total_run_cases = 0 THEN 0 ELSE ROUND((v_executed / v_total_run_cases) * 100, 2) END AS executed_pct,
+        CASE WHEN v_total_run_cases = 0 THEN 0 ELSE ROUND((v_untested / v_total_run_cases) * 100, 2) END AS untested_pct,
+        v_avg_cases_per_run AS avg_cases_per_run
+    ;
+
+    SELECT
+        s.status_name,
+        s.color_hex,
+        COALESCE(SUM(CASE WHEN trc.status_name = s.status_name THEN 1 ELSE 0 END), 0) AS count,
+        CASE
+            WHEN v_total_run_cases = 0 THEN 0
+            ELSE ROUND(
+                (COALESCE(SUM(CASE WHEN trc.status_name = s.status_name THEN 1 ELSE 0 END), 0) / v_total_run_cases) * 100,
+                2
+            )
+        END AS pct
+    FROM `Statuses` s
+    LEFT JOIN `Test_Run_Cases` trc
+      ON trc.organization_id = v_org_id AND trc.status_name = s.status_name
+      LEFT JOIN `Test_Runs` tr ON trc.test_run_id = tr.test_run_id
+    WHERE s.organization_id = v_org_id
+      AND (tr.project_id = p_project_id OR tr.project_id IS NULL)
+    GROUP BY s.status_name, s.color_hex
+    ORDER BY s.status_name;
+END//
+
+CREATE PROCEDURE list_org_recent_activity(
+    IN p_user_id BIGINT UNSIGNED,
+    IN p_limit INT
+)
+BEGIN
+    DECLARE v_org_id BIGINT UNSIGNED;
+    SELECT organization_id INTO v_org_id FROM `Users` WHERE user_id = p_user_id;
+
+    IF v_org_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User not found';
+    END IF;
+
+    SELECT tr.test_run_id,
+           tr.name AS run_name,
+           trc.test_case_id,
+           trc.status_name,
+           trc.notes,
+           tc.title AS test_case_title,
+           trc.organization_id,
+           trc.test_case_id,
+           trc.test_run_id
+    FROM `Test_Run_Cases` trc
+    JOIN `Test_Runs` tr ON trc.test_run_id = tr.test_run_id
+    JOIN `Projects` p ON tr.project_id = p.project_id
+    JOIN `Test_Cases` tc ON trc.test_case_id = tc.test_case_id
+    WHERE p.organization_id = v_org_id
+    ORDER BY trc.test_run_id DESC, trc.test_case_id DESC
+    LIMIT p_limit;
 END//
 DELIMITER ;
 
