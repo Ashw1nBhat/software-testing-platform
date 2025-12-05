@@ -91,23 +91,40 @@ VALUES (1, 'Acme QA Labs', 'Manual testing center of excellence', '123 Quality A
 INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (1, 'UNTESTED', '#9ca3af') ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex);
 INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (1, 'PASS', '#22c55e') ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex);
 INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (1, 'FAIL', '#ef4444') ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex);
+INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (1, 'BLOCKED', '#f97316') ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex);
+INSERT INTO `Statuses` (organization_id, status_name, color_hex) VALUES (1, 'IN_PROGRESS', '#3b82f6') ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex);
 
 INSERT INTO `Users` (user_id, organization_id, user_name, employee_code, designation, join_date, role, password_md5)
 VALUES
   (1, 1, 'Tara Tester', 'EMP-1001', 'QA Analyst', '2024-01-15', 'TESTER', MD5('testerpass')),
-  (2, 1, 'Walt Writer', 'EMP-1002', 'Test Writer', '2023-11-01', 'TEST_WRITER', MD5('writerpass'));
+  (2, 1, 'Walt Writer', 'EMP-1002', 'Test Writer', '2023-11-01', 'TEST_WRITER', MD5('writerpass')),
+  (3, 1, 'Sam Supervisor', 'EMP-1003', 'QA Lead', '2023-06-10', 'TEST_WRITER', MD5('leadpass')),
+  (4, 1, 'Priya QA', 'EMP-1004', 'Senior Tester', '2024-02-05', 'TESTER', MD5('priyapass'));
 
 INSERT INTO `Projects` (project_id, organization_id, name, description)
 VALUES
   (1, 1, 'Mobile Banking App', 'Regression suite for v2 releases'),
-  (2, 1, 'Web Portal', 'Smoke tests for customer portal');
+  (2, 1, 'Web Portal', 'Smoke tests for customer portal'),
+  (3, 1, 'API Services', 'Contract tests for payments and auth'),
+  (4, 1, 'Desktop Client', 'Regression for desktop release'),
+  (5, 1, 'Data Pipeline', 'ETL quality and validation');
 
 INSERT INTO `Test_Cases` (test_case_id, project_id, title, description)
 VALUES
   (1, 1, 'Login with valid credentials', 'User logs in with correct username/password'),
   (2, 1, 'Login with invalid password', 'Ensure lockout after failed attempts'),
   (3, 2, 'Add item to cart', 'Add product and verify cart count'),
-  (4, 2, 'Checkout with credit card', 'Complete purchase using valid credit card');
+  (4, 2, 'Checkout with credit card', 'Complete purchase using valid credit card'),
+  (5, 1, 'Password reset email', 'Validate reset flow and token'),
+  (6, 1, 'Transfer funds between accounts', 'Scheduled and immediate transfers'),
+  (7, 2, 'Apply coupon during checkout', 'Ensure discounts calculate correctly'),
+  (8, 2, 'Persist cart after login', 'Guest cart merges after authentication'),
+  (9, 3, 'Auth token refresh', 'Refresh tokens before expiry'),
+  (10, 3, 'Payment webhook validation', 'Validate signature and payload'),
+  (11, 4, 'Installer upgrade path', 'Upgrade from prior version without data loss'),
+  (12, 4, 'Offline mode caching', 'Verify cached data when offline'),
+  (13, 5, 'Daily ETL completeness', 'Row counts and basic profiling for daily loads'),
+  (14, 5, 'Anomaly detection thresholds', 'Alerts on metric deviations');
 
 INSERT INTO `Test_Steps` (test_step_id, test_case_id, description, required_data)
 VALUES
@@ -123,15 +140,58 @@ VALUES
   (10, 4, 'Proceed to checkout', NULL),
   (11, 4, 'Enter shipping details', 'address: 123 Quality Ave'),
   (12, 4, 'Enter credit card and place order', 'cc: 4111111111111111 exp 12/28 cvv 123'),
-  (13, 4, 'Verify order confirmation page displays', NULL);
+  (13, 4, 'Verify order confirmation page displays', NULL),
+  (14, 5, 'Request password reset', 'user email'),
+  (15, 5, 'Open email and follow link', NULL),
+  (16, 5, 'Set new password and login', 'new password'),
+  (17, 6, 'Schedule transfer for tomorrow', 'amount, from, to'),
+  (18, 6, 'Verify pending transfer in activity', NULL),
+  (19, 6, 'Execute immediate transfer and confirm balance', NULL),
+  (20, 7, 'Add items and apply coupon', 'coupon code'),
+  (21, 7, 'Verify discount and totals', NULL),
+  (22, 8, 'Add items as guest', NULL),
+  (23, 8, 'Login and confirm cart persists', NULL),
+  (24, 9, 'Call refresh endpoint before expiry', 'valid refresh token'),
+  (25, 9, 'Verify new tokens and scopes', NULL),
+  (26, 10, 'Send webhook with valid signature', 'payload, signature'),
+  (27, 10, 'Reject webhook with invalid signature', NULL),
+  (28, 11, 'Install previous version', NULL),
+  (29, 11, 'Upgrade to latest build', NULL),
+  (30, 11, 'Verify data and settings retained', NULL),
+  (31, 12, 'Enable offline mode', NULL),
+  (32, 12, 'Use app without connectivity', NULL),
+  (33, 12, 'Resync when back online', NULL),
+  (34, 13, 'Run daily ETL', NULL),
+  (35, 13, 'Check row counts vs source', NULL),
+  (36, 14, 'Ingest metrics', NULL),
+  (37, 14, 'Flag anomalies beyond threshold', 'threshold values');
 
 INSERT INTO `Test_Runs` (test_run_id, project_id, tester_name, name, description)
-VALUES (1, 1, 'Tara Tester', 'Sprint 12 Regression', 'Core login coverage');
+VALUES
+  (1, 1, 'Tara Tester', 'Sprint 12 Regression', 'Core login coverage'),
+  (2, 1, 'Priya QA', 'Sprint 13 Smoke', 'Auth and transfers'),
+  (3, 2, 'Priya QA', 'Checkout Cycle', 'Cart and checkout scenarios'),
+  (4, 3, 'Tara Tester', 'Payments Contract', 'Auth and webhook validation'),
+  (5, 4, 'Priya QA', 'Desktop RC1', 'Upgrade and offline'),
+  (6, 5, 'Tara Tester', 'Data Pipeline Nightly', 'ETL health checks');
 
 INSERT INTO `Test_Run_Cases` (test_run_id, test_case_id, organization_id, status_name, notes)
 VALUES
   (1, 1, 1, 'PASS', 'Validated on build 1.2.3'),
-  (1, 2, 1, 'FAIL', 'Error message missing after 3rd attempt');
+  (1, 2, 1, 'FAIL', 'Error message missing after 3rd attempt'),
+  (2, 1, 1, 'IN_PROGRESS', 'Working through MFA update'),
+  (2, 5, 1, 'PASS', 'Email received in under 1 minute'),
+  (2, 6, 1, 'BLOCKED', 'Bank API sandbox down'),
+  (3, 3, 1, 'PASS', 'Cart badge and totals correct'),
+  (3, 4, 1, 'PASS', 'Payment approved with visa test card'),
+  (3, 7, 1, 'FAIL', 'Coupon applied twice on refresh'),
+  (3, 8, 1, 'IN_PROGRESS', 'Investigating cart merge timing'),
+  (4, 9, 1, 'PASS', 'Tokens refresh 2 mins before expiry'),
+  (4, 10, 1, 'PASS', 'Invalid signatures rejected'),
+  (5, 11, 1, 'PASS', 'Upgrade retained settings'),
+  (5, 12, 1, 'FAIL', 'Offline cache expired too early'),
+  (6, 13, 1, 'PASS', 'Row counts within tolerance'),
+  (6, 14, 1, 'IN_PROGRESS', 'Tuning anomaly thresholds');
 
 DROP PROCEDURE IF EXISTS create_user;
 DROP PROCEDURE IF EXISTS login_user;
