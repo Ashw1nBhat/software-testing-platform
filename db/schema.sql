@@ -224,6 +224,8 @@ DROP PROCEDURE IF EXISTS delete_status;
 DROP PROCEDURE IF EXISTS list_org_stats;
 DROP PROCEDURE IF EXISTS list_project_stats;
 DROP PROCEDURE IF EXISTS list_org_recent_activity;
+DROP PROCEDURE IF EXISTS get_org_info;
+DROP PROCEDURE IF EXISTS get_project_info;
 
 DELIMITER //
 
@@ -1153,6 +1155,42 @@ BEGIN
     WHERE p.organization_id = v_org_id
     ORDER BY trc.test_run_id DESC, trc.test_case_id DESC
     LIMIT p_limit;
+END//
+
+CREATE PROCEDURE get_org_info(
+    IN p_user_id BIGINT UNSIGNED
+)
+BEGIN
+    DECLARE v_org_id BIGINT UNSIGNED;
+    SELECT organization_id INTO v_org_id FROM `Users` WHERE user_id = p_user_id;
+    IF v_org_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User not found';
+    END IF;
+    SELECT organization_id, name, description, address, pin_code
+    FROM `Organizations`
+    WHERE organization_id = v_org_id;
+END//
+
+CREATE PROCEDURE get_project_info(
+    IN p_user_id BIGINT UNSIGNED,
+    IN p_project_id BIGINT UNSIGNED
+)
+BEGIN
+    DECLARE v_org_id BIGINT UNSIGNED;
+    DECLARE v_project_org BIGINT UNSIGNED;
+    SELECT organization_id INTO v_org_id FROM `Users` WHERE user_id = p_user_id;
+    SELECT organization_id INTO v_project_org FROM `Projects` WHERE project_id = p_project_id;
+
+    IF v_org_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'User not found';
+    END IF;
+    IF v_project_org IS NULL OR v_project_org <> v_org_id THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Project not found or not in organization';
+    END IF;
+
+    SELECT project_id, name, description
+    FROM `Projects`
+    WHERE project_id = p_project_id;
 END//
 DELIMITER ;
 

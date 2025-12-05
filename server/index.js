@@ -446,13 +446,13 @@ app.post('/api/statuses', async (req, res) => {
 
 app.put('/api/statuses/:name', async (req, res) => {
   const statusName = req.params.name
-  const { userId, colorHex } = req.body ?? {}
+  const { userId, colorHex, newName } = req.body ?? {}
   if (!userId || !statusName || !colorHex) {
     res.status(400).json({ ok: false, error: 'userId, name and colorHex are required' })
     return
   }
   try {
-    await callProcedure('update_status', [userId, statusName, colorHex])
+    await callProcedure('update_status', [userId, statusName, newName || statusName, colorHex])
     res.json({ ok: true })
   } catch (error) {
     res.status(500).json({
@@ -633,6 +633,43 @@ app.get('/api/analytics/recent', async (req, res) => {
     res.status(500).json({
       ok: false,
       error: error instanceof Error ? error.message : 'Unable to load recent activity',
+    })
+  }
+})
+
+app.get('/api/org/info', async (req, res) => {
+  const { userId } = req.query
+  if (!userId) {
+    res.status(400).json({ ok: false, error: 'userId is required' })
+    return
+  }
+  try {
+    const result = await callProcedure('get_org_info', [userId])
+    const info = Array.isArray(result) && Array.isArray(result[0]) ? result[0][0] : null
+    res.json({ ok: true, org: info })
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unable to load organization info',
+    })
+  }
+})
+
+app.get('/api/projects/:id/info', async (req, res) => {
+  const { userId } = req.query
+  const projectId = req.params.id
+  if (!userId || !projectId) {
+    res.status(400).json({ ok: false, error: 'userId and projectId are required' })
+    return
+  }
+  try {
+    const result = await callProcedure('get_project_info', [userId, projectId])
+    const info = Array.isArray(result) && Array.isArray(result[0]) ? result[0][0] : null
+    res.json({ ok: true, project: info })
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unable to load project info',
     })
   }
 })

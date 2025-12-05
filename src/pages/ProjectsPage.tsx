@@ -30,6 +30,7 @@ type AnalyticsTotals = {
   avg_cases_per_run: number
 }
 type AnalyticsStatus = { status_name: string; color_hex: string; count: number; pct: number }
+type OrgInfo = { organization_id: number; name: string; description: string | null; address: string | null; pin_code: string | null }
 
 const friendlyError = (error: unknown) => {
   const msg = axios.isAxiosError(error)
@@ -84,6 +85,7 @@ function ProjectsPage() {
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analyticsMessage, setAnalyticsMessage] = useState('')
   const [analyticsActivity, setAnalyticsActivity] = useState<any[]>([])
+  const [orgInfo, setOrgInfo] = useState<OrgInfo | null>(null)
   const formatPct = (value?: number) => `${Number.isFinite(Number(value ?? 0)) ? Number(value ?? 0).toFixed(1) : '0.0'}%`
   const formatNumber = (value?: number) => (Number.isFinite(Number(value)) ? Number(value).toFixed(1) : '0.0')
 
@@ -112,6 +114,7 @@ function ProjectsPage() {
     loadProjects()
     loadStatuses()
     loadAnalytics(analyticsProjectId)
+    loadOrgInfo()
   }, [user])
 
   useEffect(() => {
@@ -172,6 +175,16 @@ function ProjectsPage() {
       setAnalyticsActivity([])
     } finally {
       setAnalyticsLoading(false)
+    }
+  }
+
+  const loadOrgInfo = async () => {
+    if (!user) return
+    try {
+      const response = await axios.get(`${apiBase}/api/org/info`, { params: { userId: user.user_id } })
+      setOrgInfo(response.data?.org || null)
+    } catch (error) {
+      setOrgInfo(null)
     }
   }
 
@@ -551,6 +564,24 @@ function ProjectsPage() {
 
               {activeTab === 'analytics' && (
                 <div className="d-grid gap-3">
+                  {orgInfo && (
+                    <Card className="glass-card">
+                      <Card.Body className="d-grid gap-2">
+                        <div className="d-flex justify-content-between flex-wrap gap-2">
+                          <div>
+                            <div className="eyebrow mb-1">Organization</div>
+                            <h5 className="mb-1">{orgInfo.name}</h5>
+                            <div className="text-muted small">{orgInfo.description || 'No description'}</div>
+                          </div>
+                          <div className="text-muted small text-end">
+                            <div>{orgInfo.address || 'Address not set'}</div>
+                            <div>PIN: {orgInfo.pin_code || '-'}</div>
+                          </div>
+                        </div>
+                      </Card.Body>
+                    </Card>
+                  )}
+
                   <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 analytics-header">
                     <div>
                       <h5 className="mb-1">Analytics</h5>
@@ -569,6 +600,12 @@ function ProjectsPage() {
                       ))}
                     </Form.Select>
                   </div>
+
+                  {analyticsProjectId && (
+                    <div className="text-muted small">
+                      {projects.find((p) => p.project_id === analyticsProjectId)?.description || 'No project description'}
+                    </div>
+                  )}
 
                   {analyticsMessage && (
                     <Alert variant="danger" className="mb-0">
